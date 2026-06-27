@@ -11,9 +11,14 @@ const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
 const DESTINO = process.env.DESTINO;
 
 async function enviarWhatsapp(texto) {
-try {
-await axios.post(
-"https://graph.facebook.com/v23.0/${PHONE_NUMBER_ID}/messages",
+  try {
+
+    console.log("TOKEN LENGTH:", WHATSAPP_TOKEN?.length);
+    console.log("PHONE_NUMBER_ID:", PHONE_NUMBER_ID);
+    console.log("DESTINO:", DESTINO);
+
+    await axios.post(
+      `https://graph.facebook.com/v23.0/${PHONE_NUMBER_ID}/messages`,
 {
 messaging_product: "whatsapp",
 to: DESTINO,
