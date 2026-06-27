@@ -10,14 +10,11 @@ const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN;
 const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
 const DESTINO = process.env.DESTINO;
 
-async function enviarWhatsapp(texto) {
+// Modificamos la función para recibir las variables que tú quieras escribir
+async function enviarWhatsapp(titulo, estado, causas) {
   try {
-    console.log("EL TOKEN EN MEMORIA EMPIEZA CON:", WHATSAPP_TOKEN ? WHATSAPP_TOKEN.substring(0, 15) : "NO EXISTE");
-    console.log("TOKEN LENGTH:", WHATSAPP_TOKEN?.length);
-    console.log("PHONE_NUMBER_ID:", PHONE_NUMBER_ID);
-    console.log("DESTINO:", DESTINO);
+    console.log("Enviando alerta de WhatsApp...");
 
-    // FIX EXTRA: Axios necesita: URL, BODY, HEADERS (en ese orden exacto de parámetros)
     await axios.post(
       `https://graph.facebook.com/v23.0/${PHONE_NUMBER_ID}/messages`,
       {
@@ -25,10 +22,21 @@ async function enviarWhatsapp(texto) {
         to: DESTINO,
         type: "template",
         template: {
-          name: "alerta_biodigestor",
+          name: "alerta_biodigestor", // El nombre de tu plantilla en Meta
           language: {
             code: "es"
-          }
+          },
+          components: [
+            {
+              type: "body",
+              // Aquí escribes el texto dinámico que reemplazará a {{1}}, {{2}} y {{3}}
+              parameters: [
+                { type: "text", text: titulo }, // Reemplaza a {{1}}
+                { type: "text", text: estado }, // Reemplaza a {{2}}
+                { type: "text", text: causas }  // Reemplaza a {{3}}
+              ]
+            }
+          ]
         }
       },
       {
@@ -38,12 +46,29 @@ async function enviarWhatsapp(texto) {
         }
       }
     );
-    console.log("¡Mensaje template enviado con éxito!");
+    console.log("¡Alerta personalizada enviada con éxito!");
   } catch (err) {
     console.error("Error WhatsApp:", err.response?.data || err.message);
   }
 }
 
+// Endpoint que recibe la alerta del Webhook de tu sistema/planta
+app.post("/healthcheck_alert", async (req, res) => {
+  console.log("ALERTA HEALTHCHECK RECIBIDA");
+
+  // ¡AQUÍ ESCRIBES EL TEXTO QUE TU QUIERAS!
+  // Puedes cambiar estos strings cuando quieras sin pedirle permiso a Meta
+  const miTitulo = "⚠️ BIODIGESTOR CENTRAL SIN COMUNICACIÓN";
+  const miEstado = "No se recibió el heartbeat de la planta en los últimos 15 minutos.";
+  const misCausas = "- Corte eléctrico general\n- Servidor local apagado\n- Enlace de red caído";
+
+  // Ejecutamos el envío con tus textos personalizados
+  await enviarWhatsapp(miTitulo, miEstado, misCausas);
+
+  res.status(200).send("OK");
+});
+
+// Verificación del Webhook de Meta
 app.get("/webhook", (req, res) => {
   const mode = req.query["hub.mode"];
   const token = req.query["hub.verify_token"];
@@ -60,24 +85,6 @@ app.get("/webhook", (req, res) => {
 app.post("/webhook", (req, res) => {
   console.log(JSON.stringify(req.body, null, 2));
   res.sendStatus(200);
-});
-
-app.post("/healthcheck_alert", async (req, res) => {
-  console.log("ALERTA HEALTHCHECK RECIBIDA");
-
-  // Nota: Aunque pases este string personalizado acá, la función actual está mandando el "hello_world" por requerimiento de Meta. 
-  // Una vez que veas que llega el "hello_world", avísame y creamos la plantilla real en tu panel de Meta para que puedas enviar este texto.
-  await enviarWhatsapp(
-    "⚠️ BIODIGESTOR SIN COMUNICACIÓN\n\n" +
-    "No se recibió heartbeat de la planta.\n\n" +
-    "Posibles causas:\n" +
-    "- Corte eléctrico\n" +
-    "- PC apagada\n" +
-    "- Enlace inalámbrico caído\n" +
-    "- Servicio detenido"
-  );
-
-  res.status(200).send("OK");
 });
 
 app.get("/", (req, res) => {
