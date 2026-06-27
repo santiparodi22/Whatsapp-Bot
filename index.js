@@ -54,12 +54,11 @@ app.post("/healthcheck_alert", async (req, res) => {
 
   const miMensajePersonalizado = 
     "⚠️ *BIODIGESTOR SIN COMUNICACIÓN*\n\n" +
-    `📅 *Fecha y Hora:* ${fechaHoraArreglada}\n\n` +
-    "No se recibió heartbeat de la planta.\n\n" +
     "*Posibles causas:*\n" +
     "▪️ Corte eléctrico general\n" +
     "▪️ PC apagada o sin internet\n" +
-    "▪️ Servicio detenido";
+    "▪️ Servicio detenido\n\n" +
+    `📅 *Fecha y Hora:* ${fechaHoraArreglada}`;
 
   await enviarWhatsapp(miMensajePersonalizado);
 
