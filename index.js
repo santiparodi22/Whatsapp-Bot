@@ -10,33 +10,21 @@ const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN;
 const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
 const DESTINO = process.env.DESTINO;
 
-// Modificamos la función para recibir las variables que tú quieras escribir
-async function enviarWhatsapp(titulo, estado, causas) {
+// Función modificada para TEXTO LIBRE (Ventana de 24 horas)
+async function enviarWhatsapp(textoLibre) {
   try {
-    console.log("Enviando alerta de WhatsApp...");
+    console.log("Enviando mensaje de texto libre por WhatsApp...");
 
     await axios.post(
       `https://graph.facebook.com/v23.0/${PHONE_NUMBER_ID}/messages`,
       {
         messaging_product: "whatsapp",
+        recipient_type: "individual",
         to: DESTINO,
-        type: "template",
-        template: {
-          name: "alerta_biodigestor", // El nombre de tu plantilla en Meta
-          language: {
-            code: "es_AR"
-          },
-          components: [
-            {
-              type: "body",
-              // Aquí escribes el texto dinámico que reemplazará a {{1}}, {{2}} y {{3}}
-              parameters: [
-                { type: "text", text: titulo }, // Reemplaza a {{1}}
-                { type: "text", text: estado }, // Reemplaza a {{2}}
-                { type: "text", text: causas }  // Reemplaza a {{3}}
-              ]
-            }
-          ]
+        type: "text", // <-- Cambiamos 'template' por 'text'
+        text: {
+          preview_url: false,
+          body: textoLibre // <-- Aquí viaja tu mensaje completo tal cual lo escribas
         }
       },
       {
@@ -46,29 +34,39 @@ async function enviarWhatsapp(titulo, estado, causas) {
         }
       }
     );
-    console.log("¡Alerta personalizada enviada con éxito!");
+    console.log("¡Mensaje libre enviado con éxito!");
   } catch (err) {
     console.error("Error WhatsApp:", err.response?.data || err.message);
   }
 }
 
-// Endpoint que recibe la alerta del Webhook de tu sistema/planta
+// Endpoint del Healthcheck
 app.post("/healthcheck_alert", async (req, res) => {
   console.log("ALERTA HEALTHCHECK RECIBIDA");
 
-  // ¡AQUÍ ESCRIBES EL TEXTO QUE TU QUIERAS!
-  // Puedes cambiar estos strings cuando quieras sin pedirle permiso a Meta
-  const miTitulo = "⚠️ BIODIGESTOR CENTRAL SIN COMUNICACIÓN";
-  const miEstado = "No se recibió el heartbeat de la planta en los últimos 15 minutos.";
-  const misCausas = "- Corte eléctrico general\n- Servidor local apagado\n- Enlace de red caído";
+  // Al tener la ventana de 24hs abierta, el formato de abajo te va a llegar PERFECTO e idéntico
+  const ahora = new Date();
+  const fechaHoraArreglada = ahora.toLocaleString("es-AR", {
+    timeZone: "America/Argentina/Buenos_Aires",
+    dateStyle: "short",
+    timeStyle: "medium"
+  });
 
-  // Ejecutamos el envío con tus textos personalizados
-  await enviarWhatsapp(miTitulo, miEstado, misCausas);
+  const miMensajePersonalizado = 
+    "⚠️ *BIODIGESTOR SIN COMUNICACIÓN*\n\n" +
+    `📅 *Fecha y Hora:* ${fechaHoraArreglada}\n\n` +
+    "No se recibió heartbeat de la planta.\n\n" +
+    "*Posibles causas:*\n" +
+    "▪️ Corte eléctrico general\n" +
+    "▪️ PC apagada o sin internet\n" +
+    "▪️ Servicio detenido";
+
+  await enviarWhatsapp(miMensajePersonalizado);
 
   res.status(200).send("OK");
 });
 
-// Verificación del Webhook de Meta
+// Webhooks obligatorios de Meta
 app.get("/webhook", (req, res) => {
   const mode = req.query["hub.mode"];
   const token = req.query["hub.verify_token"];
