@@ -23,15 +23,17 @@ async function enviarWhatsapp(texto) {
       `https://graph.facebook.com/v23.0/${PHONE_NUMBER_ID}/messages`,
 {
 messaging_product: "whatsapp",
-to: DESTINO,
-type: "text",
-text: {
-body: texto
+      to: DESTINO,
+      type: "template",
+      template: {
+        name: "hello_world",
+        language: {
+          code: "en_US"
 }
 },
 {
 headers: {
-Authorization: "Bearer ${WHATSAPP_TOKEN}",
+Authorization: `Bearer ${WHATSAPP_TOKEN}`,
 "Content-Type": "application/json"
 }
 }
