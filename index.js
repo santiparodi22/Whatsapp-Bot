@@ -25,9 +25,9 @@ async function enviarWhatsapp(texto) {
         to: DESTINO,
         type: "template",
         template: {
-          name: "hello_world",
+          name: "alerta_biodigestor",
           language: {
-            code: "en_US"
+            code: "es"
           }
         }
       },
