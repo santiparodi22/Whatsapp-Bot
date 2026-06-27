@@ -24,7 +24,7 @@ async function enviarWhatsapp(titulo, estado, causas) {
         template: {
           name: "alerta_biodigestor", // El nombre de tu plantilla en Meta
           language: {
-            code: "es"
+            code: "es_AR"
           },
           components: [
             {
