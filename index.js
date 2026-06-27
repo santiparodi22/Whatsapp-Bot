@@ -13,7 +13,9 @@ const DESTINO = process.env.DESTINO;
 async function enviarWhatsapp(texto) {
   try {
 
-    console.log("TOKEN LENGTH:", WHATSAPP_TOKEN?.length);
+    
+	console.log("EL TOKEN EN MEMORIA EMPIEZA CON:", process.env.WHATSAPP_TOKEN ? process.env.WHATSAPP_TOKEN.substring(0, 15) : "NO EXISTE");
+	console.log("TOKEN LENGTH:", WHATSAPP_TOKEN?.length);
     console.log("PHONE_NUMBER_ID:", PHONE_NUMBER_ID);
     console.log("DESTINO:", DESTINO);
 
