@@ -4,7 +4,7 @@ const axios = require("axios");
 const app = express();
 app.use(express.json());
 
-// Variables de entorno de Railway
+// Variables de entorno de Railway (Asegurate de tenerlas cargadas en la web)
 const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN;
 const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
 const DESTINO_WHATSAPP = process.env.DESTINO; 
@@ -12,25 +12,25 @@ const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
 let tictacAlerta = null;
-const TIEMPO_LIMITE = 30 * 1000; // 30s de heartbeat
+const TIEMPO_LIMITE = 30 * 1000; // 30 segundos sin recibir datos = planta caída
 
-// 🧠 MEMORIA DE CONTROL DE RAILWAY (Reemplaza la memoria local de Python)
+// Memoria de control en la nube
 let ultimosDatosPlc = null;
 let estadosAnteriores = {};
 let alarmasActivas = new Set();
 
-// Helpers de conversión de datos idénticos a los de Python
+// Convertidores de tipo de datos
 const parseBool = (v) => String(v).toLowerCase() === "true";
 const parseFloatArg = (v) => {
   if (!v) return 0.0;
   return parseFloat(String(v).replace(",", ".")) || 0.0;
 };
 
-// Despachador Multicanal Simultáneo
+// Despachador Multicanal (Manda en paralelo a WhatsApp y Telegram)
 async function notificarMultiCanal(texto) {
-  console.log(`📢 Enviando Alerta: ${texto.split('\n')[0]}`);
+  console.log(`📢 Despachando notificación: ${texto.split('\n')[0]}`);
   
-  // WhatsApp
+  // 1. Envío a WhatsApp
   try {
     await axios.post(`https://graph.facebook.com/v23.0/${PHONE_NUMBER_ID}/messages`, {
       messaging_product: "whatsapp",
@@ -40,21 +40,21 @@ async function notificarMultiCanal(texto) {
       text: { preview_url: false, body: texto }
     }, { headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}`, "Content-Type": "application/json" } });
   } catch (err) {
-    console.error("Error WhatsApp:", err.response?.data || err.message);
+    console.error("❌ Error en la API de WhatsApp:", err.response?.data || err.message);
   }
 
-  // Telegram
+  // 2. Envío a Telegram
   try {
     await axios.post(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
       chat_id: TELEGRAM_CHAT_ID,
       text: texto
     }, { timeout: 8000 });
   } catch (err) {
-    console.error("Error Telegram:", err.message);
+    console.error("❌ Error en la API de Telegram:", err.message);
   }
 }
 
-// Formateador de Reportes de variables
+// Formateador de Reportes Industriales
 function armarReporteTexto(datos, titulo = "📊 ESTADO EN TIEMPO REAL") {
   const ahora = new Date().toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" });
   
@@ -66,21 +66,32 @@ function armarReporteTexto(datos, titulo = "📊 ESTADO EN TIEMPO REAL") {
   return `${titulo}\n\n🕒 ${ahora}\n\n*DOMO 1*\nNivel: ${nivel1.toFixed(0)}\nPresión: ${pres1.toFixed(2)} mbar\n\n*DOMO 2*\nNivel: ${nivel2.toFixed(0)}\nPresión: ${pres2.toFixed(2)} mbar\n\n*DIGESTOR 1:* ${datos.modulo_1_temperatura_digestor_p || 0} °C\n*DIGESTOR 2:* ${datos.modulo_2_temperatura_digestor_p || 0} °C\n\n*AGITADOR 1:* ${datos.agitador_slider_1 || 0} RPM\n*AGITADOR 2:* ${datos.agitador_slider_2 || 0} RPM\n\nCiclo: ${datos.ciclo || 'false'}\nChiller: ${datos.chiller || 'false'}\nSoplador: ${datos.soplador_biogas || 'false'}`;
 }
 
-// 📥 ENDPOINT CENTRAL: Procesa la Telemetría y Evalúa Alarmas cada 5 segundos
+// 📥 ENDPOINT CENTRAL: Recibe la telemetría del Python cada 5 segundos
 app.post("/api/notificar", async (req, res) => {
-  const { datos } = req.body;
-  if (!datos) return res.status(400).send({ error: "Falta el paquete de datos" });
+  // 🔥 ESTO SÍ O SÍ FORZARÁ EL LOG EN TU TABLERO DE RAILWAY
+  console.log("-----------------------------------------------------");
+  console.log(`📥 [${new Date().toLocaleTimeString()}] PAQUETE RECIBIDO DESDE LA PLANTA`);
+  console.log("BODY:", JSON.stringify(req.body));
+  console.log("-----------------------------------------------------");
 
-  // 1. Monitoreo de Heartbeat (Cortes de luz/internet)
+  const { datos } = req.body;
+  if (!datos) {
+    console.log("⚠️ Paquete rechazado: No contiene el objeto 'datos'.");
+    return res.status(400).send({ error: "Falta el paquete de datos" });
+  }
+
+  ultimosDatosPlc = datos;
+
+  // Control de desconexión (Heartbeat)
   if (tictacAlerta) clearTimeout(tictacAlerta);
   tictacAlerta = setTimeout(async () => {
     const ahora = new Date().toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" });
     await notificarMultiCanal("⚠️ *BIODIGESTOR SIN COMUNICACIÓN*\n\nLa planta dejó de reportar datos hace más de 30 segundos.\n📅 " + ahora);
   }, TIEMPO_LIMITE);
 
-  // 2. PROCESAMIENTO DE ALARMAS EN LA NUBE
+  // EVALUACIÓN DE ALARMAS EN LA NUBE
   try {
-    // --- Evaluador de Estados Digitales ---
+    // 1. Estados Digitales (On/Off)
     const mapeoEquipos = {
       "Calefaccion Tanque 1": "calefaccion_manual_1",
       "Calefaccion Tanque 2": "calefaccion_manual_2",
@@ -100,7 +111,7 @@ app.post("/api/notificar", async (req, res) => {
       estadosAnteriores[nombre] = valorActual;
     }
 
-    // --- Evaluador de Alarmas Analógicas ---
+    // 2. Variables Analógicas (Rangos y límites)
     const pres1 = parseFloatArg(datos.presion_domo_1);
     const pres2 = parseFloatArg(datos.presion_domo_2);
     const temp1 = parseFloatArg(datos.modulo_1_temperatura_digestor_p);
@@ -131,15 +142,13 @@ app.post("/api/notificar", async (req, res) => {
       }
     }
   } catch (err) {
-    console.error("Error evaluando lógica de alarmas en Railway:", err.message);
+    console.error("❌ Error procesando lógica de alarmas:", err.message);
   }
 
-  // Guardamos en la memoria global de Railway para el comando intermitente "estado"
-  ultimosDatosPlc = datos;
   res.status(200).send({ status: "OK" });
 });
 
-// 📥 Webhook Interactivo para WhatsApp: "estado"
+// 📥 WEBHOOK INTERACTIVO: Escucha el mensaje "estado" en WhatsApp
 app.post("/webhook", async (req, res) => {
   try {
     const body = req.body;
@@ -149,7 +158,7 @@ app.post("/webhook", async (req, res) => {
 
       if (textoUsuario === "estado") {
         if (!ultimosDatosPlc) {
-          await notificarMultiCanal("⏳ Sincronizando con los sensores del PLC... Reintentá.");
+          await notificarMultiCanal("⏳ Sincronizando con los sensores locales del PLC... Reintentá.");
         } else {
           const reporte = armarReporteTexto(ultimosDatosPlc);
           await notificarMultiCanal(reporte);
@@ -157,12 +166,12 @@ app.post("/webhook", async (req, res) => {
       }
     }
   } catch (error) {
-    console.error("Error en webhook:", error.message);
+    console.error("❌ Error en Webhook entrante:", error.message);
   }
   res.sendStatus(200);
 });
 
-// ⏰ Reportes Programados basados en la hora del servidor (Sincronizado es-AR)
+// ⏰ REPORTES AUTOMÁTICOS PROGRAMADOS (Hora de Argentina GMT-3)
 setInterval(async () => {
   const ahora = new Date();
   const horaArg = new Date(ahora.toLocaleString("en-US", { timeZone: "America/Argentina/Buenos_Aires" }));
@@ -180,14 +189,16 @@ setInterval(async () => {
   }
 }, 10000);
 
+// Verificación obligatoria para Meta Webhooks
 app.get("/webhook", (req, res) => {
   if (req.query["hub.verify_token"] === "mibot123") return res.status(200).send(req.query["hub.challenge"]);
   res.sendStatus(403);
 });
 
 app.get("/", (req, res) => { res.send("Cerebro del Biodigestor en la Nube Activo"); });
-// ESCUCHA EN EL PUERTO QUE LE ASIGNA RAILWAY (No forzar el 3000 a secas)
+
+// 🛠️ ASIGNACIÓN DINÁMICA DE PUERTOS DE RAILWAY (Crucial)
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, "0.0.0.0", () => { 
-  console.log(`🚀 Servidor multicanal corriendo en el puerto ${PORT}`); 
+  console.log(`🚀 Servidor multicanal en línea en puerto ${PORT}`); 
 });
