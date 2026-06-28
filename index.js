@@ -201,6 +201,7 @@ app.get("/", (req, res) => { res.send("Cerebro del Biodigestor en la Nube Activo
 
 // 🛠️ CONFIGURACIÓN DE RED OBLIGATORIA PARA EL PROXY DE RAILWAY
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, "0.0.0.0", () => { 
-  console.log(`🚀 Servidor levantado exitosamente en puerto ${PORT}`); 
+// CONFIGURACIÓN DE RED PURA PARA RAILWAY
+app.listen(process.env.PORT || 3000, () => { 
+  console.log("🚀 Servidor en línea"); 
 });
