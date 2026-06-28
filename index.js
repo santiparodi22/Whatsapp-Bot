@@ -14,6 +14,7 @@ const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 let tictacAlerta = null;
 const TIEMPO_LIMITE = 30 * 1000; 
 
+// Memoria de control en la nube
 let ultimosDatosPlc = null;
 let estadosAnteriores = {};
 let alarmasActivas = new Set();
@@ -24,11 +25,11 @@ const parseFloatArg = (v) => {
   return parseFloat(String(v).replace(",", ".")) || 0.0;
 };
 
-// Despachador Multicanal
+// Despachador Multicanal (Manda en paralelo a WhatsApp y Telegram)
 async function notificarMultiCanal(texto) {
   console.log(`📢 Despachando notificación: ${texto.split('\n')[0]}`);
   
-  // 1. WhatsApp
+  // 1. Envío a WhatsApp
   try {
     await axios.post(`https://graph.facebook.com/v23.0/${PHONE_NUMBER_ID}/messages`, {
       messaging_product: "whatsapp",
@@ -38,21 +39,21 @@ async function notificarMultiCanal(texto) {
       text: { preview_url: false, body: texto }
     }, { headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}`, "Content-Type": "application/json" } });
   } catch (err) {
-    console.error("❌ Error en WhatsApp:", err.response?.data || err.message);
+    console.error("❌ Error en la API de WhatsApp:", err.response?.data || err.message);
   }
 
-  // 2. Telegram
+  // 2. Envío a Telegram
   try {
     await axios.post(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
       chat_id: TELEGRAM_CHAT_ID,
       text: texto
     }, { timeout: 8000 });
   } catch (err) {
-    console.error("❌ Error en Telegram:", err.message);
+    console.error("❌ Error en la API de Telegram:", err.message);
   }
 }
 
-// Formateador de Reportes
+// Formateador de Reportes Industriales
 function armarReporteTexto(datos, titulo = "📊 ESTADO EN TIEMPO REAL") {
   const ahora = new Date().toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" });
   
@@ -64,28 +65,40 @@ function armarReporteTexto(datos, titulo = "📊 ESTADO EN TIEMPO REAL") {
   return `${titulo}\n\n🕒 ${ahora}\n\n*DOMO 1*\nNivel: ${nivel1.toFixed(0)}\nPresión: ${pres1.toFixed(2)} mbar\n\n*DOMO 2*\nNivel: ${nivel2.toFixed(0)}\nPresión: ${pres2.toFixed(2)} mbar\n\n*DIGESTOR 1:* ${datos.modulo_1_temperatura_digestor_p || 0} °C\n*DIGESTOR 2:* ${datos.modulo_2_temperatura_digestor_p || 0} °C\n\n*AGITADOR 1:* ${datos.agitador_slider_1 || 0} RPM\n*AGITADOR 2:* ${datos.agitador_slider_2 || 0} RPM\n\nCiclo: ${datos.ciclo || 'false'}\nChiller: ${datos.chiller || 'false'}\nSoplador: ${datos.soplador_biogas || 'false'}`;
 }
 
-// 📥 ENDPOINT TELEMETRÍA (Planta -> Nube)
+// 📥 ENDPOINT CENTRAL: Recibe la telemetría del Python de la Planta
 app.post("/api/notificar", (req, res) => {
   const { datos } = req.body;
-  if (!datos) return res.status(400).send({ error: "Falta el paquete de datos" });
   
+  if (!datos) {
+    return res.status(400).send({ error: "Falta el paquete de datos" });
+  }
+
+  // Respuesta instantánea para asegurar el HTTP 200 OK y evitar 502
   res.status(200).send({ status: "OK" });
 
+  // Procesamiento asincrónico en segundo plano
   setTimeout(async () => {
     ultimosDatosPlc = datos;
 
+    // Control de desconexión (Heartbeat)
     if (tictacAlerta) clearTimeout(tictacAlerta);
     tictacAlerta = setTimeout(async () => {
       const ahora = new Date().toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" });
       await notificarMultiCanal("⚠️ *BIODIGESTOR SIN COMUNICACIÓN*\n\nLa planta dejó de reportar datos hace más de 30 segundos.\n📅 " + ahora);
     }, TIEMPO_LIMITE);
 
+    // EVALUACIÓN DE ALARMAS
     try {
-      // (Lógica de alarmas digitales y analógicas...)
+      // 1. Estados Digitales
       const mapeoEquipos = {
-        "Calefaccion Tanque 1": "calefaccion_manual_1", "Calefaccion Tanque 2": "calefaccion_manual_2",
-        "Chiller": "chiller", "Soplador Biogas": "soplador_biogas", "Caldera": "quemador_caldera",
-        "Agitacion Automatica Tanques": "ciclo", "Soplador Tanque 1": "domo_aire_1", "Soplador Tanque 2": "domo_aire_2"
+        "Calefaccion Tanque 1": "calefaccion_manual_1",
+        "Calefaccion Tanque 2": "calefaccion_manual_2",
+        "Chiller": "chiller",
+        "Soplador Biogas": "soplador_biogas",
+        "Caldera": "quemador_caldera",
+        "Agitacion Automatica Tanques": "ciclo",
+        "Soplador Tanque 1": "domo_aire_1",
+        "Soplador Tanque 2": "domo_aire_2"
       };
 
       for (const [nombre, llave] of Object.entries(mapeoEquipos)) {
@@ -96,10 +109,15 @@ app.post("/api/notificar", (req, res) => {
         estadosAnteriores[nombre] = valorActual;
       }
 
-      const pres1 = parseFloatArg(datos.presion_domo_1); const pres2 = parseFloatArg(datos.presion_domo_2);
-      const temp1 = parseFloatArg(datos.modulo_1_temperatura_digestor_p); const temp2 = parseFloatArg(datos.modulo_2_temperatura_digestor_p);
-      const nivel1 = parseFloatArg(datos.nivel_digestor_1) + 100; const nivel2 = parseFloatArg(datos.nivel_digestor_2) + 100;
-      const slider1 = parseFloatArg(datos.agitador_slider_1); const slider2 = parseFloatArg(datos.agitador_slider_2);
+      // 2. Variables Analógicas
+      const pres1 = parseFloatArg(datos.presion_domo_1);
+      const pres2 = parseFloatArg(datos.presion_domo_2);
+      const temp1 = parseFloatArg(datos.modulo_1_temperatura_digestor_p);
+      const temp2 = parseFloatArg(datos.modulo_2_temperatura_digestor_p);
+      const nivel1 = parseFloatArg(datos.nivel_digestor_1) + 100;
+      const nivel2 = parseFloatArg(datos.nivel_digestor_2) + 100;
+      const slider1 = parseFloatArg(datos.agitador_slider_1);
+      const slider2 = parseFloatArg(datos.agitador_slider_2);
 
       const checkAlarmas = {
         "Presion Domo 1 Alta": { activa: pres1 > 4.0, msg: `🚨 ALARMA\n\nPresion Domo 1 Alta\nValor actual: ${pres1.toFixed(2)} mbar` },
@@ -114,20 +132,27 @@ app.post("/api/notificar", (req, res) => {
 
       for (const [alarma, control] of Object.entries(checkAlarmas)) {
         if (control.activa && !alarmasActivas.has(alarma)) {
-          await notificarMultiCanal(control.msg); alarmasActivas.add(alarma);
+          await notificarMultiCanal(control.msg);
+          alarmasActivas.add(alarma);
         } else if (!control.activa && alarmasActivas.has(alarma)) {
-          await notificarMultiCanal(`✅ NORMALIZADO\n\n${alarma}`); alarmasActivas.remove(alarma);
+          await notificarMultiCanal(`✅ NORMALIZADO\n\n${alarma}`);
+          alarmasActivas.delete(alarma);
         }
       }
-    } catch (err) { console.error("❌ Error en alarmas:", err.message); }
+    } catch (err) {
+      console.error("❌ Error procesando lógica de alarmas:", err.message);
+    }
   }, 0);
 });
 
-// 📥 WEBHOOK WHATSAPP (Meta -> Nube)
+// 📥 WEBHOOK UNIFICADO: Escucha comandos desde WhatsApp y Telegram en la misma ruta
 app.post("/webhook", async (req, res) => {
   try {
     const body = req.body;
+
+    // 1. Detección si el mensaje viene de WhatsApp Business API
     if (body.object === "whatsapp_business_account" && body.entry?.[0]?.changes?.[0]?.value?.messages?.[0]) {
+      console.log("🟢 Mensaje entrante detectado desde: WHATSAPP");
       const mensajeRecibido = body.entry[0].changes[0].value.messages[0];
       const textoUsuario = mensajeRecibido.text?.body?.trim()?.toLowerCase();
 
@@ -136,46 +161,44 @@ app.post("/webhook", async (req, res) => {
         await notificarMultiCanal(reporte);
       }
     }
-  } catch (error) { console.error("❌ Error en Webhook WhatsApp:", error.message); }
-  res.sendStatus(200);
-});
 
-// 📥 WEBHOOK TELEGRAM (Telegram -> Nube)
-app.post("/telegram-webhook", async (req, res) => {
-  try {
-    // 🔥 ESTO SÍ O SÍ VA A FORZAR EL LOG EN TU TABLERO DE RAILWAY
-    console.log("-----------------------------------------------------");
-    console.log("✈️ ¡IMPACTÓ UN MENSAJE EN EL WEBHOOK DE TELEGRAM!");
-    console.log("BODY DE TELEGRAM:", JSON.stringify(req.body));
-    console.log("-----------------------------------------------------");
+    // 2. Detección si el mensaje viene desde los servidores de Telegram
+    if (body.message && body.message.text) {
+      console.log("✈️ Mensaje entrante detectado desde: TELEGRAM");
+      const textoUsuario = body.message.text.trim().toLowerCase();
 
-    const { message } = req.body;
-    if (message && message.text) {
-      const textoUsuario = message.text.trim().toLowerCase();
       if (textoUsuario === "estado") {
         const reporte = ultimosDatosPlc ? armarReporteTexto(ultimosDatosPlc) : "⏳ Sincronizando con los sensores locales del PLC... Reintentá.";
         await notificarMultiCanal(reporte);
       }
     }
-  } catch (error) { 
-    console.error("❌ Error en Webhook Telegram:", error.message); 
+
+  } catch (error) {
+    console.error("❌ Error procesando el Webhook unificado:", error.message);
   }
   res.sendStatus(200);
 });
-// Reportes Programados (Cada 10s revisa la hora)
+
+// ⏰ REPORTES AUTOMÁTICOS PROGRAMADOS (Hora de Argentina GMT-3)
 setInterval(async () => {
   try {
     const ahora = new Date();
     const horaArg = new Date(ahora.toLocaleString("en-US", { timeZone: "America/Argentina/Buenos_Aires" }));
-    const h = horaArg.getHours(); const m = horaArg.getMinutes(); const s = horaArg.getSeconds();
+    
+    const h = horaArg.getHours();
+    const m = horaArg.getMinutes();
+    const s = horaArg.getSeconds();
 
     if (ultimosDatosPlc && m === 0 && s < 10) {
       if (h === 0 || h === 8 || h === 16) {
         const titulo = h === 0 ? "📈 RESUMEN DIARIO GENERAL" : "📊 ESTADO GENERAL BIODIGESTOR (8hs)";
-        await notificarMultiCanal(armarReporteTexto(ultimosDatosPlc, titulo));
+        const reporteProgramado = armarReporteTexto(ultimosDatosPlc, titulo);
+        await notificarMultiCanal(reporteProgramado);
       }
     }
-  } catch (cronErr) { console.error("❌ Error en reloj:", cronErr.message); }
+  } catch (cronErr) {
+    console.error("❌ Error interno en reloj programado:", cronErr.message);
+  }
 }, 10000);
 
 app.get("/webhook", (req, res) => {
@@ -183,16 +206,10 @@ app.get("/webhook", (req, res) => {
   res.sendStatus(403);
 });
 
-app.get("/", (req, res) => { res.send("Cerebro del Biodigestor Activo"); });
+app.get("/", (req, res) => { res.send("Cerebro del Biodigestor en la Nube Activo"); });
 
-// Vinculación obligatoria de Telegram al iniciar el servidor
+// CONFIGURACIÓN DE RED PURA DE ALTA COMPATIBILIDAD
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, async () => { 
+app.listen(PORT, "0.0.0.0", () => { 
   console.log(`🚀 Servidor levantado exitosamente en puerto ${PORT}`); 
-  // Esto le dice de forma automática a Telegram a dónde enviar los mensajes
-  try {
-    const urlPublica = `https://whatsapp-bot-production-eb9c.up.railway.app/telegram-webhook`;
-    await axios.get(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/setWebhook?url=${urlPublica}`);
-    console.log("✈️ Enlace automático con Telegram Webhook completado con éxito");
-  } catch (e) { console.error("⚠️ No se pudo auto-vincular el webhook de Telegram:", e.message); }
 });
