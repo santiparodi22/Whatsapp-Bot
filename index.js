@@ -171,19 +171,24 @@ app.post("/webhook", async (req, res) => {
 
 // ⏰ REPORTES AUTOMÁTICOS PROGRAMADOS (Hora de Argentina GMT-3)
 setInterval(async () => {
-  const ahora = new Date();
-  const horaArg = new Date(ahora.toLocaleString("en-US", { timeZone: "America/Argentina/Buenos_ Aires" }));
-  
-  const h = horaArg.getHours();
-  const m = horaArg.getMinutes();
-  const s = horaArg.getSeconds();
+  try {
+    const ahora = new Date();
+    // 🪓 CORREGIDO: Espacio en blanco eliminado de "America/Argentina/Buenos_Aires"
+    const horaArg = new Date(ahora.toLocaleString("en-US", { timeZone: "America/Argentina/Buenos_Aires" }));
+    
+    const h = horaArg.getHours();
+    const m = horaArg.getMinutes();
+    const s = horaArg.getSeconds();
 
-  if (ultimosDatosPlc && m === 0 && s < 10) {
-    if (h === 0 || h === 8 || h === 16) {
-      const titulo = h === 0 ? "📈 RESUMEN DIARIO GENERAL" : "📊 ESTADO GENERAL BIODIGESTOR (8hs)";
-      const reporteProgramado = armarReporteTexto(ultimosDatosPlc, titulo);
-      await notificarMultiCanal(reporteProgramado);
+    if (ultimosDatosPlc && m === 0 && s < 10) {
+      if (h === 0 || h === 8 || h === 16) {
+        const titulo = h === 0 ? "📈 RESUMEN DIARIO GENERAL" : "📊 ESTADO GENERAL BIODIGESTOR (8hs)";
+        const reporteProgramado = armarReporteTexto(ultimosDatosPlc, titulo);
+        await notificarMultiCanal(reporteProgramado);
+      }
     }
+  } catch (cronErr) {
+    console.error("❌ Error interno en reloj programado:", cronErr.message);
   }
 }, 10000);
 
