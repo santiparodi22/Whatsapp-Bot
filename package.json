@@ -1,17 +1,13 @@
 {
-  "name": "whatsapp-bot",
+  "name": "bot-biodigestor-railway",
   "version": "1.0.0",
-  "description": "",
+  "description": "Cerebro del Biodigestor en la Nube",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node index.js"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
   "dependencies": {
-    "axios": "^1.18.1",
-    "express": "^5.2.1"
+    "axios": "^1.7.0",
+    "express": "^4.19.0"
   }
 }
