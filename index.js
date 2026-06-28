@@ -25,9 +25,9 @@ const parseFloatArg = (v) => {
   return parseFloat(String(v).replace(",", ".")) || 0.0;
 };
 
-// Despachador Multicanal
+// Despachador Multicanal (Alarmas y Reportes Automáticos)
 async function notificarMultiCanal(texto) {
-  console.log(`📢 Despachando notificación: ${texto.split('\n')[0]}`);
+  console.log(`📢 Despachando notificación automática: ${texto.split('\n')[0]}`);
   
   // 1. Envío a WhatsApp
   try {
@@ -39,7 +39,7 @@ async function notificarMultiCanal(texto) {
       text: { preview_url: false, body: texto }
     }, { headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}`, "Content-Type": "application/json" } });
   } catch (err) {
-    console.error("❌ Error en la API de WhatsApp:", err.response?.data || err.message);
+    console.error("❌ Error enviando a WhatsApp:", err.response?.data || err.message);
   }
 
   // 2. Envío a Telegram
@@ -49,7 +49,7 @@ async function notificarMultiCanal(texto) {
       text: texto
     }, { timeout: 8000 });
   } catch (err) {
-    console.error("❌ Error en la API de Telegram:", err.response?.data || err.message);
+    console.error("❌ Error enviando a Telegram:", err.message);
   }
 }
 
@@ -65,7 +65,9 @@ function armarReporteTexto(datos, titulo = "📊 ESTADO EN TIEMPO REAL") {
   return `${titulo}\n\n🕒 ${ahora}\n\n*DOMO 1*\nNivel: ${nivel1.toFixed(0)}\nPresión: ${pres1.toFixed(2)} mbar\n\n*DOMO 2*\nNivel: ${nivel2.toFixed(0)}\nPresión: ${pres2.toFixed(2)} mbar\n\n*DIGESTOR 1:* ${datos.modulo_1_temperatura_digestor_p || 0} °C\n*DIGESTOR 2:* ${datos.modulo_2_temperatura_digestor_p || 0} °C\n\n*AGITADOR 1:* ${datos.agitador_slider_1 || 0} RPM\n*AGITADOR 2:* ${datos.agitador_slider_2 || 0} RPM\n\nCiclo: ${datos.ciclo || 'false'}\nChiller: ${datos.chiller || 'false'}\nSoplador: ${datos.soplador_biogas || 'false'}`;
 }
 
+// =================================================================
 // 📥 ENDPOINT CENTRAL: Recibe la telemetría de la Planta (PC/Python)
+// =================================================================
 app.post("/api/notificar", (req, res) => {
   const { datos } = req.body;
   if (!datos) return res.status(400).send({ error: "Falta el paquete de datos" });
@@ -119,24 +121,18 @@ app.post("/api/notificar", (req, res) => {
           await notificarMultiCanal(`✅ NORMALIZADO\n\n${alarma}`); alarmasActivas.delete(alarma);
         }
       }
-    } catch (err) { console.error("❌ Error en alarmas:", err.message); }
+    } catch (err) { console.error("❌ Error en procesamiento de alarmas:", err.message); }
   }, 0);
 });
 
-// 📥 WEBHOOK UNIFICADO: Escáner Total de comandos
+// =================================================================
+// 📥 WEBHOOK ORIGINAL (Mantiene la puerta de WhatsApp)
+// =================================================================
 app.post("/webhook", async (req, res) => {
-  // 🔥 ESTO CORRE ANTES QUE CUALQUIER COSA. VA A FORZAR EL LOG SÍ O SÍ.
-  console.log("=====================================================");
-  console.log("📥 ¡ALGO INTERCEPTÓ EL WEBHOOK CENTRAL!");
-  console.log("PAYLOAD RECIBIDO:", JSON.stringify(req.body));
-  console.log("=====================================================");
-
   try {
     const body = req.body;
-
-    // 1. Caso WhatsApp
     if (body.object === "whatsapp_business_account" && body.entry?.[0]?.changes?.[0]?.value?.messages?.[0]) {
-      console.log("🟢 Procesando comando como: WHATSAPP");
+      console.log("🟢 Mensaje entrante detectado desde: WHATSAPP");
       const mensajeRecibido = body.entry[0].changes[0].value.messages[0];
       const textoUsuario = mensajeRecibido.text?.body?.trim()?.toLowerCase();
 
@@ -145,38 +141,49 @@ app.post("/webhook", async (req, res) => {
         await notificarMultiCanal(reporte);
       }
     }
+  } catch (error) { console.error("❌ Error en Webhook WhatsApp:", error.message); }
+  res.sendStatus(200);
+});
 
-    // 2. Caso Telegram
-    if (body.message && body.message.text) {
-      console.log("✈️ Procesando comando como: TELEGRAM");
-      const textoUsuario = body.message.text.trim().toLowerCase();
+// =================================================================
+// 📥 NUEVO ENDPOINT EXCLUSIVO PARA INTERCEPTAR TELEGRAM SÍ O SÍ
+// =================================================================
+app.post("/comando-secreto-telegram", async (req, res) => {
+  console.log("=====================================================");
+  console.log("🔥 ¡TRAFICO ENTRANDO POR RUTA EXCLUSIVA TELEGRAM!");
+  console.log("PAYLOAD:", JSON.stringify(req.body));
+  console.log("=====================================================");
 
+  try {
+    const { message } = req.body;
+    if (message && message.text) {
+      const textoUsuario = message.text.trim().toLowerCase();
+      
       if (textoUsuario === "estado") {
         const reporte = ultimosDatosPlc ? armarReporteTexto(ultimosDatosPlc) : "⏳ Sincronizando con los sensores locales del PLC... Reintentá.";
         
-        // Si el usuario nos habló por privado, respondemos directamente a su ID de chat dinámico para asegurar que le llegue
-        const chatDestino = body.message.chat.id;
-        console.log(`➡️ Enviando respuesta de Telegram al Chat ID: ${chatDestino}`);
+        // Extraemos dinámicamente el ID de quien nos habla por privado
+        const chatDestino = message.chat.id;
+        console.log(`➡️ Intentando responder de inmediato al Chat ID: ${chatDestino}`);
         
         try {
           await axios.post(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
             chat_id: chatDestino,
             text: reporte
           });
+          console.log(`✅ Respuesta inyectada con éxito a Telegram`);
         } catch (tgErr) {
-          console.error("❌ Falló el envío de vuelta a Telegram:", tgErr.message);
+          console.error("❌ Falló la API de Telegram al enviar la respuesta de vuelta:", tgErr.message);
         }
       }
     }
-
   } catch (error) {
-    console.error("❌ Error crítico dentro del Webhook:", error.message);
+    console.error("❌ Error crítico en ruta secreta de Telegram:", error.message);
   }
-  
   res.sendStatus(200);
 });
 
-// Reportes Programados (Cada 10s revisa la hora)
+// ⏰ REPORTES AUTOMÁTICOS PROGRAMADOS (Hora de Argentina GMT-3)
 setInterval(async () => {
   try {
     const ahora = new Date();
@@ -189,9 +196,10 @@ setInterval(async () => {
         await notificarMultiCanal(armarReporteTexto(ultimosDatosPlc, titulo));
       }
     }
-  } catch (cronErr) { console.error("❌ Error en reloj:", cronErr.message); }
+  } catch (cronErr) { console.error("❌ Error interno en reloj programado:", cronErr.message); }
 }, 10000);
 
+// Verificación inicial de WhatsApp Webhook
 app.get("/webhook", (req, res) => {
   if (req.query["hub.verify_token"] === "mibot123") return res.status(200).send(req.query["hub.challenge"]);
   res.sendStatus(403);
@@ -199,7 +207,7 @@ app.get("/webhook", (req, res) => {
 
 app.get("/", (req, res) => { res.send("Cerebro del Biodigestor Activo"); });
 
-// Lanzamiento
+// CONFIGURACIÓN DE RED PURA DE ALTA COMPATIBILIDAD
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, "0.0.0.0", () => { 
   console.log(`🚀 Servidor levantado exitosamente en puerto ${PORT}`); 
