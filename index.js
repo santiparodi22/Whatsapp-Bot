@@ -35,8 +35,7 @@ async function enviarWhatsapp(texto) {
 
 // 📥 ENDPOINT RECEPTOR: Aquí golpeará tu script de Python
 app.post("/api/notificar", async (req, res) => {
-  // Aseguramos que el mensaje venga limpio
-  const mensaje = req.body.mensaje; 
+  const mensaje = req.body.mensaje;
   
   if (!mensaje) {
     return res.status(400).send({ error: "Falta el parámetro 'mensaje'" });
@@ -54,10 +53,10 @@ app.post("/api/notificar", async (req, res) => {
   }, TIEMPO_LIMITE);
   // -----------------------------
 
-  // Despacha directo a Meta usando la función que ya armamos
+  // Envía el texto plano al grupo de WhatsApp
   await enviarWhatsapp(mensaje);
 
-  res.status(200).send({ status: "OK", message: "Notificación procesada" });
+  res.status(200).send({ status: "OK", message: "Notificación procesada con éxito" });
 });
 // Webhook de Meta (Obligatorio para validaciones)
 app.get("/webhook", (req, res) => {
