@@ -140,9 +140,15 @@ app.post("/webhook", async (req, res) => {
   res.sendStatus(200);
 });
 
-// 📥 NUEVO: WEBHOOK TELEGRAM (Telegram -> Nube)
+// 📥 WEBHOOK TELEGRAM (Telegram -> Nube)
 app.post("/telegram-webhook", async (req, res) => {
   try {
+    // 🔥 ESTO SÍ O SÍ VA A FORZAR EL LOG EN TU TABLERO DE RAILWAY
+    console.log("-----------------------------------------------------");
+    console.log("✈️ ¡IMPACTÓ UN MENSAJE EN EL WEBHOOK DE TELEGRAM!");
+    console.log("BODY DE TELEGRAM:", JSON.stringify(req.body));
+    console.log("-----------------------------------------------------");
+
     const { message } = req.body;
     if (message && message.text) {
       const textoUsuario = message.text.trim().toLowerCase();
@@ -151,10 +157,11 @@ app.post("/telegram-webhook", async (req, res) => {
         await notificarMultiCanal(reporte);
       }
     }
-  } catch (error) { console.error("❌ Error en Webhook Telegram:", error.message); }
+  } catch (error) { 
+    console.error("❌ Error en Webhook Telegram:", error.message); 
+  }
   res.sendStatus(200);
 });
-
 // Reportes Programados (Cada 10s revisa la hora)
 setInterval(async () => {
   try {
