@@ -7,9 +7,9 @@ from datetime import datetime
 TOKEN = "7561117012:AAF1YrEWouH9LRK0_1Z05rY_FaqKQX0AC3M"
 CHAT_ID = "8939764165"
 
-WHATSAPP_TOKEN = "EAATl5uiU1L4BRyJinwM4oDuHlNGFxZCIjF4Mo2YpfXubYa9ZCJcg9IaXjeGYTnk3mEvmvkBWO13jllhmotcbX4meDiSzQryT0SCa6Xdm2yu6V7vvkz6aSQNZCVdHFb2S7P5WhgOkck8U2BYkN4wDhZC3FxGt2VqsWZCQ4VAJHTUZCPNwztybmqqf2ZCLNW9vleovi4ZAq8kQ9HTsuSegFevjKGgIlTUAH3ptZAKgEZB8TeZBV7fbRtnZAakJacNNLnYM7MQ6pO1SZAX5vI9rk839PdgZDZD"
-PHONE_NUMBER_ID = "1263981456788222"
-WHATSAPP_DESTINO = "541162679990"
+WHATSAPP_TOKEN = "EAATl5uiU1L4BR1LId4azSJ1RJNjZCIQ3Cx62QZB4SWYCOYKCx5RHsRbQu2XVF2z1Ur96viOtYu4ldw1JldSXTs1tw3LFgkb0VeAUokMQUnxSA7BTnC6dxAatsoGLC1sbm3Kt5b9yDeFXkdrtVjZCJZASRaZBnrQPsztMwpJjRESDN0x7fpuuaMsyWpMLmJwZDZD"
+PHONE_NUMBER_ID = "1229528586903969"
+WHATSAPP_DESTINO = "5491162679990"
 
 URL = "http://localhost/biodigestor/siemens.ashx?comando=busco_novedades_plc"
 INTERVALO = 5
@@ -26,20 +26,19 @@ def enviar_telegram(mensaje):
 
 def enviar_whatsapp(mensaje):
     try:
-        url = f"https://graph.facebook.com/v23.0/{PHONE_NUMBER_ID}/messages"
-        headers = {
-            "Authorization": f"Bearer {WHATSAPP_TOKEN}",
-            "Content-Type": "application/json"
-        }
-        payload = {
-            "messaging_product": "whatsapp",
-            "to": WHATSAPP_DESTINO,
-            "type": "text",
-            "text": {"body": mensaje}
-        }
-        requests.post(url, headers=headers, json=payload, timeout=10)
+        # 🚀 Apuntamos a tu endpoint en Railway
+        url = "https://biodigestor-monitor-production.up.railway.app/api/notificar"
+        headers = {"Content-Type": "application/json"}
+        payload = {"mensaje": mensaje}
+        
+        # Le enviamos el texto y Railway se encarga de distribuirlo al grupo
+        response = requests.post(url, headers=headers, json=payload, timeout=10)
+        
+        if response.status_code != 200:
+            print(f"Railway rechazó el mensaje: {response.status_code} - {response.text}")
+            
     except Exception as e:
-        print("Error WhatsApp:", e)
+        print("Error al desviar WhatsApp por Railway:", e)
 
 def enviar_alerta(mensaje):
     enviar_telegram(mensaje)
