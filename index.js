@@ -35,7 +35,8 @@ async function enviarWhatsapp(texto) {
 
 // 📥 ENDPOINT RECEPTOR: Aquí golpeará tu script de Python
 app.post("/api/notificar", async (req, res) => {
-  const { mensaje } = req.body;
+  // Aseguramos que el mensaje venga limpio
+  const mensaje = req.body.mensaje; 
   
   if (!mensaje) {
     return res.status(400).send({ error: "Falta el parámetro 'mensaje'" });
@@ -43,25 +44,21 @@ app.post("/api/notificar", async (req, res) => {
 
   console.log("🔔 Nueva notificación recibida desde el monitor Python.");
 
-  // --- CONTROL DE HEARTBEAT AUTOMÁTICO ---
-  // Si Python mandó un mensaje (Alarma o Reporte), la PC está encendida y con red.
-  // Reseteamos el temporizador de emergencia.
+  // --- CONTROL DE HEARTBEAT ---
   if (tictacAlerta) clearTimeout(tictacAlerta);
-  
   tictacAlerta = setTimeout(async () => {
-    console.log("🚨 ALERTA: Silencio prolongado detectado. Planta incomunicada.");
+    console.log("🚨 ALERTA: Silencio prolongado detectado.");
     const ahora = new Date().toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires", dateStyle: "short", timeStyle: "medium" });
     const alertaCaida = "⚠️ *BIODIGESTOR SIN COMUNICACIÓN*\n\n*Posibles causas:*\n▪️ Corte eléctrico general\n▪️ PC apagada o sin internet\n▪️ Servicio detenido\n\n" + `📅 *Fecha y Hora:* ${ahora}`;
     await enviarWhatsapp(alertaCaida);
   }, TIEMPO_LIMITE);
-  // ---------------------------------------
+  // -----------------------------
 
-  // Reenviamos el contenido exacto (con saltos de línea y emojis) al grupo de WhatsApp
+  // Despacha directo a Meta usando la función que ya armamos
   await enviarWhatsapp(mensaje);
 
   res.status(200).send({ status: "OK", message: "Notificación procesada" });
 });
-
 // Webhook de Meta (Obligatorio para validaciones)
 app.get("/webhook", (req, res) => {
   const mode = req.query["hub.mode"];
