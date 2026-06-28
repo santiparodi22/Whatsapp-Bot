@@ -5,89 +5,73 @@ const app = express();
 app.use(express.json());
 
 const VERIFY_TOKEN = "mibot123";
-
 const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN;
 const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
-const DESTINO = process.env.DESTINO;
+const DESTINO = process.env.DESTINO; // Tu ID de grupo de WhatsApp (xxxxxxxx@g.us)
 
-// Función modificada para TEXTO LIBRE (Ventana de 24 horas)
-async function enviarWhatsapp(textoLibre) {
+let tictacAlerta = null;
+const TIEMPO_LIMITE = 15 * 60 * 1000; // 15 minutos de tolerancia por silencio
+
+// Función central para inyectar los mensajes en WhatsApp
+async function enviarWhatsapp(texto) {
   try {
-    console.log("Enviando mensaje de texto libre por WhatsApp...");
-
+    console.log("Despachando mensaje al grupo de WhatsApp...");
     await axios.post(
       `https://graph.facebook.com/v23.0/${PHONE_NUMBER_ID}/messages`,
       {
         messaging_product: "whatsapp",
         recipient_type: "individual",
         to: DESTINO,
-        type: "text", // <-- Cambiamos 'template' por 'text'
-        text: {
-          preview_url: false,
-          body: textoLibre // <-- Aquí viaja tu mensaje completo tal cual lo escribas
-        }
+        type: "text",
+        text: { preview_url: false, body: texto }
       },
-      {
-        headers: {
-          Authorization: `Bearer ${WHATSAPP_TOKEN}`,
-          "Content-Type": "application/json"
-        }
-      }
+      { headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}`, "Content-Type": "application/json" } }
     );
-    console.log("¡Mensaje libre enviado con éxito!");
+    console.log("¡WhatsApp enviado con éxito!");
   } catch (err) {
-    console.error("Error WhatsApp:", err.response?.data || err.message);
+    console.error("Error en API de WhatsApp:", err.response?.data || err.message);
   }
 }
 
-// Endpoint del Healthcheck
-app.post("/healthcheck_alert", async (req, res) => {
-  console.log("ALERTA HEALTHCHECK RECIBIDA");
+// 📥 ENDPOINT RECEPTOR: Aquí golpeará tu script de Python
+app.post("/api/notificar", async (req, res) => {
+  const { mensaje } = req.body;
+  
+  if (!mensaje) {
+    return res.status(400).send({ error: "Falta el parámetro 'mensaje'" });
+  }
 
-  // Al tener la ventana de 24hs abierta, el formato de abajo te va a llegar PERFECTO e idéntico
-  const ahora = new Date();
-  const fechaHoraArreglada = ahora.toLocaleString("es-AR", {
-    timeZone: "America/Argentina/Buenos_Aires",
-    dateStyle: "short",
-    timeStyle: "medium"
-  });
+  console.log("🔔 Nueva notificación recibida desde el monitor Python.");
 
-  const miMensajePersonalizado = 
-    "⚠️ *BIODIGESTOR SIN COMUNICACIÓN*\n\n" +
-    "*Posibles causas:*\n" +
-    "- Corte eléctrico general\n" +
-    "- PC apagada o sin internet\n" +
-    "- Servicio detenido\n\n" +
-    `📅 ${fechaHoraArreglada}`;
+  // --- CONTROL DE HEARTBEAT AUTOMÁTICO ---
+  // Si Python mandó un mensaje (Alarma o Reporte), la PC está encendida y con red.
+  // Reseteamos el temporizador de emergencia.
+  if (tictacAlerta) clearTimeout(tictacAlerta);
+  
+  tictacAlerta = setTimeout(async () => {
+    console.log("🚨 ALERTA: Silencio prolongado detectado. Planta incomunicada.");
+    const ahora = new Date().toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires", dateStyle: "short", timeStyle: "medium" });
+    const alertaCaida = "⚠️ *BIODIGESTOR SIN COMUNICACIÓN*\n\n*Posibles causas:*\n▪️ Corte eléctrico general\n▪️ PC apagada o sin internet\n▪️ Servicio detenido\n\n" + `📅 *Fecha y Hora:* ${ahora}`;
+    await enviarWhatsapp(alertaCaida);
+  }, TIEMPO_LIMITE);
+  // ---------------------------------------
 
-  await enviarWhatsapp(miMensajePersonalizado);
+  // Reenviamos el contenido exacto (con saltos de línea y emojis) al grupo de WhatsApp
+  await enviarWhatsapp(mensaje);
 
-  res.status(200).send("OK");
+  res.status(200).send({ status: "OK", message: "Notificación procesada" });
 });
 
-// Webhooks obligatorios de Meta
+// Webhook de Meta (Obligatorio para validaciones)
 app.get("/webhook", (req, res) => {
   const mode = req.query["hub.mode"];
   const token = req.query["hub.verify_token"];
   const challenge = req.query["hub.challenge"];
-
-  if (mode === "subscribe" && token === VERIFY_TOKEN) {
-    console.log("Webhook verificado");
-    res.status(200).send(challenge);
-  } else {
-    res.sendStatus(403);
-  }
+  if (mode === "subscribe" && token === VERIFY_TOKEN) return res.status(200).send(challenge);
+  res.sendStatus(403);
 });
+app.post("/webhook", (req, res) => { res.sendStatus(200); });
 
-app.post("/webhook", (req, res) => {
-  console.log(JSON.stringify(req.body, null, 2));
-  res.sendStatus(200);
-});
+app.get("/", (req, res) => { res.send("Pasarela del Biodigestor Activa"); });
 
-app.get("/", (req, res) => {
-  res.send("Servidor operativo");
-});
-
-app.listen(3000, () => {
-  console.log("Servidor iniciado");
-});
+app.listen(3000, () => { console.log("Servidor Railway escuchando en puerto 3000"); });
