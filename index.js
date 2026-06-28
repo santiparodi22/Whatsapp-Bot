@@ -186,4 +186,8 @@ app.get("/webhook", (req, res) => {
 });
 
 app.get("/", (req, res) => { res.send("Cerebro del Biodigestor en la Nube Activo"); });
-app.listen(3000, () => { console.log("Servidor de Monitoreo listo."); });
+// ESCUCHA EN EL PUERTO QUE LE ASIGNA RAILWAY (No forzar el 3000 a secas)
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, "0.0.0.0", () => { 
+  console.log(`🚀 Servidor multicanal corriendo en el puerto ${PORT}`); 
+});
