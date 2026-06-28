@@ -65,7 +65,7 @@ function armarReporteTexto(datos, titulo = "📊 ESTADO EN TIEMPO REAL") {
   return `${titulo}\n\n🕒 ${ahora}\n\n*DOMO 1*\nNivel: ${nivel1.toFixed(0)}\nPresión: ${pres1.toFixed(2)} mbar\n\n*DOMO 2*\nNivel: ${nivel2.toFixed(0)}\nPresión: ${pres2.toFixed(2)} mbar\n\n*DIGESTOR 1:* ${datos.modulo_1_temperatura_digestor_p || 0} °C\n*DIGESTOR 2:* ${datos.modulo_2_temperatura_digestor_p || 0} °C\n\n*AGITADOR 1:* ${datos.agitador_slider_1 || 0} RPM\n*AGITADOR 2:* ${datos.agitador_slider_2 || 0} RPM\n\nCiclo: ${datos.ciclo || 'false'}\nChiller: ${datos.chiller || 'false'}\nSoplador: ${datos.soplador_biogas || 'false'}`;
 }
 
-// 📥 ENDPOINT CENTRAL: Optimizado para responder INSTANTÁNEAMENTE y evitar el 502
+// 📥 ENDPOINT CENTRAL: Responde al instante para asegurar HTTP 200 OK
 app.post("/api/notificar", (req, res) => {
   const { datos } = req.body;
   
@@ -73,13 +73,12 @@ app.post("/api/notificar", (req, res) => {
     return res.status(400).send({ error: "Falta el paquete de datos" });
   }
 
-  // 🚀 RESPUESTA INMEDIATA: Le liberamos la conexión a la planta YA para evitar el 502 Bad Gateway
+  // 🚀 RESPUESTA INMEDIATA: Evita el 502 liberando al proxy de Railway de inmediato
   res.status(200).send({ status: "OK" });
 
-  // ⚡ PROCESAMIENTO EN SEGUNDO PLANO (Asincrónico)
-  // Todo lo de abajo corre tranquilo sin trabar la conexión de la planta
+  // ⚡ PROCESAMIENTO EN SEGUNDO PLANO
   setTimeout(async () => {
-    console.log(`📥 Telemetría procesada en segundo plano [${new Date().toLocaleTimeString()}]`);
+    console.log(`📥 Telemetría procesada en la nube [${new Date().toLocaleTimeString()}]`);
     ultimosDatosPlc = datos;
 
     // Control de desconexión (Heartbeat)
@@ -173,7 +172,7 @@ app.post("/webhook", async (req, res) => {
 // ⏰ REPORTES AUTOMÁTICOS PROGRAMADOS (Hora de Argentina GMT-3)
 setInterval(async () => {
   const ahora = new Date();
-  const horaArg = new Date(ahora.toLocaleString("en-US", { timeZone: "America/Argentina/Buenos_Aires" }));
+  const horaArg = new Date(ahora.toLocaleString("en-US", { timeZone: "America/Argentina/Buenos_ Aires" }));
   
   const h = horaArg.getHours();
   const m = horaArg.getMinutes();
@@ -195,7 +194,8 @@ app.get("/webhook", (req, res) => {
 
 app.get("/", (req, res) => { res.send("Cerebro del Biodigestor en la Nube Activo"); });
 
+// 🛠️ CONFIGURACIÓN DE RED OBLIGATORIA PARA EL PROXY DE RAILWAY
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, "0.0.0.0", () => { 
-  console.log(`🚀 Servidor multicanal en línea en puerto ${PORT}`); 
+  console.log(`🚀 Servidor levantado exitosamente en puerto ${PORT}`); 
 });
