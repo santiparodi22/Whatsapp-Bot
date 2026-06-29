@@ -133,7 +133,7 @@ function procesarAlarmasAutomaticas(datos, estadosAnteriores, alarmasActivas, no
     desdeCuandoCicloApagado = null;
   }
   const tiempoCicloApagadoMinutos = desdeCuandoCicloApagado ? (ahoraMs - desdeCuandoCicloApagado) / (1000 * 60) : 0;
-  evaluarAlerta("CICLO DE AGITACIÓN DESACTIVADO MANUALLY", tiempoCicloApagadoMinutos >= 30, `El ciclo de agitación general lleva apagado más de 30 minutos de forma continua. Posible desactivación manual.`, `Ciclo de agitación reactivado con éxito.`);
+  evaluarAlerta("CICLO DE AGITACIÓN DESACTIVADO", tiempoCicloApagadoMinutos >= 30, `El ciclo de agitación general lleva apagado más de 30 minutos de forma continua. Posible desactivación manual.`, `Ciclo de agitación reactivado con éxito.`);
 
   // --- 6. CAMBIOS DE ESTADO ON/OFF EN EQUIPOS ---
   const equiposAMonitorear = [
