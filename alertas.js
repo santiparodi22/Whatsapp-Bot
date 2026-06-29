@@ -136,7 +136,7 @@ function procesarAlarmasAutomaticas(datos, estadosAnteriores, alarmasActivas, no
   evaluarAlerta("CICLO DE AGITACIÓN DESACTIVADO MANUALLY", tiempoCicloApagadoMinutos >= 30, `El ciclo de agitación general lleva apagado más de 30 minutos de forma continua. Posible desactivación manual.`, `Ciclo de agitación reactivado con éxito.`);
 
   // --- 6. CAMBIOS DE ESTADO ON/OFF EN EQUIPOS ---
-  const equiposA Monitorear = [
+  const equiposAMonitorear = [
     { clave: "domo_aire_1", nombre: "Soplador Aire Domo 1" },
     { clave: "domo_aire_2", nombre: "Soplador Aire Domo 2" },
     { clave: "bomba_circulacion_1", nombre: "Bomba Circulación Domo 1" },
@@ -146,12 +146,11 @@ function procesarAlarmasAutomaticas(datos, estadosAnteriores, alarmasActivas, no
     { clave: "chiller", nombre: "Chiller Central" },
     { clave: "soplador_biogas", nombre: "Soplador de Biogás" },
     { clave: "caldera", nombre: "Caldera Central" },
-    { clave: "bomba_central", nodeNombre: "Bomba Central" }
+    { clave: "bomba_central", nombre: "Bomba Central" }
   ];
 
   equiposAMonitorear.forEach((equipo) => {
     const estadoActual = parseBool(datos[equipo.clave]);
-    const idAlerta = `ESTADO ${equipo.nombre.toUpperCase()}`;
     
     // Verificamos si existe un estado anterior guardado en memoria para notar el "cambio"
     if (estadosAnteriores[equipo.clave] !== undefined) {
