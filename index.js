@@ -100,5 +100,17 @@ app.get("/webhook", (req, res) => {
 
 app.get("/", (req, res) => { res.send("Cerebro Activo"); });
 
+// CONFIGURACIÓN DE LANZAMIENTO
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, "0.0.0.0", () => { console.log(`🚀 Puerto ${PORT}`); });
+app.listen(PORT, "0.0.0.0", async () => { 
+  console.log(`🚀 Puerto ${PORT}`); 
+
+  // 🔥 AUTO-DESPERTADOR: Asegura el webhook de Telegram cada vez que arranca el servidor
+  try {
+    const miUrlPublica = `https://whatsapp-bot-production-eb9c.up.railway.app/webhook`;
+    await axios.get(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/setWebhook?url=${miUrlPublica}`);
+    console.log("⚓ Webhook de Telegram auto-asegurado con éxito.");
+  } catch (webhookErr) {
+    console.error("⚠️ No se pudo auto-configurar el webhook al arrancar:", webhookErr.message);
+  }
+});
