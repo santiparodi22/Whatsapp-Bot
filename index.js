@@ -1,5 +1,7 @@
 const express = require("express");
 const axios = require("axios");
+// 🔌 Importamos tu nueva mesa de trabajo de alertas
+const { armarReporteTexto, procesarAlarmasAutomaticas } = require("./alertas");
 
 const app = express();
 app.use(express.json());
@@ -18,13 +20,7 @@ let ultimosDatosPlc = null;
 let estadosAnteriores = {};
 let alarmasActivas = new Set();
 
-const parseBool = (v) => String(v).toLowerCase() === "true";
-const parseFloatArg = (v) => {
-  if (!v) return 0.0;
-  return parseFloat(String(v).replace(",", ".")) || 0.0;
-};
-
-// Despachador Multicanal
+// Despachador Multicanal (No tocar)
 async function notificarMultiCanal(texto) {
   console.log(`📢 Despachando: ${texto.split('\n')[0]}`);
   try {
@@ -38,13 +34,6 @@ async function notificarMultiCanal(texto) {
   } catch (err) { console.error("❌ Error Telegram:", err.message); }
 }
 
-function armarReporteTexto(datos, titulo = "📊 ESTADO EN TIEMPO REAL") {
-  const ahora = new Date().toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" });
-  const pres1 = parseFloatArg(datos.presion_domo_1); const pres2 = parseFloatArg(datos.presion_domo_2);
-  const nivel1 = parseFloatArg(datos.nivel_digestor_1) + 100; const nivel2 = parseFloatArg(datos.nivel_digestor_2) + 100;
-  return `${titulo}\n\n🕒 ${ahora}\n\n*DOMO 1*\nNivel: ${nivel1.toFixed(0)}\nPresión: ${pres1.toFixed(2)} mbar\n\n*DOMO 2*\nNivel: ${nivel2.toFixed(0)}\nPresión: ${pres2.toFixed(2)} mbar\n\n*DIGESTOR 1:* ${datos.modulo_1_temperatura_digestor_p || 0} °C\n*DIGESTOR 2:* ${datos.modulo_2_temperatura_digestor_p || 0} °C\n\n*AGITADOR 1:* ${datos.agitador_slider_1 || 0} RPM\n*AGITADOR 2:* ${datos.agitador_slider_2 || 0} RPM`;
-}
-
 // 📥 Planta (PC/Python)
 app.post("/api/notificar", (req, res) => {
   const { datos } = req.body;
@@ -52,19 +41,18 @@ app.post("/api/notificar", (req, res) => {
   res.status(200).send({ status: "OK" });
 
   ultimosDatosPlc = datos;
+
+  // Ejecuta la lógica automática delegada en alertas.js
+  procesarAlarmasAutomaticas(datos, estadosAnteriores, alarmasActivas, notificarMultiCanal);
+
   if (tictacAlerta) clearTimeout(tictacAlerta);
   tictacAlerta = setTimeout(async () => {
     await notificarMultiCanal("⚠️ *BIODIGESTOR SIN COMUNICACIÓN*");
   }, TIEMPO_LIMITE);
 });
 
-// 📥 WEBHOOK ÚNICO E INTELIGENTE (Para WhatsApp y Telegram)
+// 📥 WEBHOOK ÚNICO E INTELIGENTE
 app.post("/webhook", async (req, res) => {
-  console.log("=====================================================");
-  console.log("📥 ¡MENSAJE ENTRANTE EN /webhook!");
-  console.log("PAYLOAD:", JSON.stringify(req.body));
-  console.log("=====================================================");
-
   try {
     const body = req.body;
 
@@ -77,7 +65,6 @@ app.post("/webhook", async (req, res) => {
           chat_id: body.message.chat.id,
           text: reporte
         });
-        console.log("✅ Respuesta enviada a Telegram");
       }
     }
 
@@ -100,12 +87,10 @@ app.get("/webhook", (req, res) => {
 
 app.get("/", (req, res) => { res.send("Cerebro Activo"); });
 
-// CONFIGURACIÓN DE LANZAMIENTO
+// Lanzamiento con Auto-Despertador incorporado
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, "0.0.0.0", async () => { 
   console.log(`🚀 Puerto ${PORT}`); 
-
-  // 🔥 AUTO-DESPERTADOR: Asegura el webhook de Telegram cada vez que arranca el servidor
   try {
     const miUrlPublica = `https://whatsapp-bot-production-eb9c.up.railway.app/webhook`;
     await axios.get(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/setWebhook?url=${miUrlPublica}`);
