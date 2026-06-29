@@ -5,8 +5,8 @@ const parseFloatArg = (v) => {
   return parseFloat(String(v).replace(",", ".")) || 0.0;
 };
 
-// Función auxiliar para mostrar "ENCENDIDO" o "APAGADO" sin emojis
-const formatoOnOff = (v) => parseBool(v) ? "ENCENDIDO" : "APAGADO";
+// Función auxiliar para mostrar "ON" o "OFF" sin emojis
+const formatoOnOff = (v) => parseBool(v) ? "ON" : "OFF";
 
 // 📊 ESTRUCTURA DEL REPORTE DE ESTADO MANUAL
 function armarReporteTexto(datos, titulo = "📊 ESTADO EN TIEMPO REAL") {
