@@ -1,6 +1,6 @@
 const express = require("express");
 const axios = require("axios");
-// 🔌 Importamos tu nueva mesa de trabajo de alertas
+// 🔌 Importamos tu mesa de trabajo de alertas
 const { armarReporteTexto, procesarAlarmasAutomaticas } = require("./alertas");
 
 const app = express();
@@ -9,7 +9,7 @@ app.use(express.json());
 // Variables de entorno de Railway
 const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN;
 const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
-const DESTINO_WHATSAPP = process.env.DESTINO; 
+const DESTINO_WHATSAPP = process.env.DESTINO; // Puede ser un número o varios separados por comas
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
@@ -20,18 +20,53 @@ let ultimosDatosPlc = null;
 let estadosAnteriores = {};
 let alarmasActivas = new Set();
 
-// Despachador Multicanal (No tocar)
+// Despachador Multicanal con soporte para múltiples destinatarios en WhatsApp
 async function notificarMultiCanal(texto) {
-  console.log(`📢 Despachando: ${texto.split('\n')[0]}`);
-  try {
-    await axios.post(`https://graph.facebook.com/v23.0/${PHONE_NUMBER_ID}/messages`, {
-      messaging_product: "whatsapp", recipient_type: "individual", to: DESTINO_WHATSAPP, type: "text", text: { preview_url: false, body: texto }
-    }, { headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}`, "Content-Type": "application/json" } });
-  } catch (err) { console.error("❌ Error WhatsApp:", err.message); }
+  console.log(`📢 Iniciando despacho de notificación...`);
 
+  // 📱 ENVÍO A WHATSAPP (Soporta múltiples números separados por comas)
+  if (DESTINO_WHATSAPP) {
+    // Separamos la cadena por comas para armar una lista de números individuales
+    const listaDestinos = DESTINO_WHATSAPP.split(","); 
+    console.log(`📱 Destinatarios detectados para WhatsApp: ${listaDestinos.length}`);
+
+    // Recorremos la lista y le enviamos el mensaje a cada uno
+    for (const numero of listaDestinos) {
+      const numeroLimpio = numero.trim(); // Borra espacios de más si los hay
+      if (!numeroLimpio) continue;
+
+      try {
+        await axios.post(`https://graph.facebook.com/v23.0/${PHONE_NUMBER_ID}/messages`, {
+          messaging_product: "whatsapp", 
+          recipient_type: "individual", 
+          to: numeroLimpio, 
+          type: "text", 
+          text: { preview_url: false, body: texto }
+        }, { 
+          headers: { 
+            Authorization: `Bearer ${WHATSAPP_TOKEN}`, 
+            "Content-Type": "application/json" 
+          } 
+        });
+        console.log(`✅ WhatsApp enviado con éxito a: ${numeroLimpio}`);
+      } catch (err) { 
+        console.error(`❌ Error WhatsApp para el número ${numeroLimpio}:`, err.message); 
+      }
+    }
+  } else {
+    console.error("⚠️ Variable DESTINO vacía. No se pudo enviar por WhatsApp.");
+  }
+
+  // ✈️ ENVÍO A TELEGRAM (Envía al chat o grupo configurado)
   try {
-    await axios.post(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, { chat_id: TELEGRAM_CHAT_ID, text: texto }, { timeout: 8000 });
-  } catch (err) { console.error("❌ Error Telegram:", err.message); }
+    await axios.post(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, { 
+      chat_id: TELEGRAM_CHAT_ID, 
+      text: texto 
+    }, { timeout: 8000 });
+    console.log("✅ Notificación enviada a Telegram con éxito.");
+  } catch (err) { 
+    console.error("❌ Error Telegram:", err.message); 
+  }
 }
 
 // 📥 Planta (PC/Python)
@@ -51,12 +86,12 @@ app.post("/api/notificar", (req, res) => {
   }, TIEMPO_LIMITE);
 });
 
-// 📥 WEBHOOK ÚNICO E INTELIGENTE
+// 📥 WEBHOOK ÚNICO E INTELIGENTE (Procesa respuestas del comando "estado")
 app.post("/webhook", async (req, res) => {
   try {
     const body = req.body;
 
-    // Detectar si es Telegram
+    // Detectar si el mensaje viene de Telegram
     if (body.message && body.message.text) {
       const texto = body.message.text.trim().toLowerCase();
       if (texto === "estado") {
@@ -65,15 +100,17 @@ app.post("/webhook", async (req, res) => {
           chat_id: body.message.chat.id,
           text: reporte
         });
+        console.log("🤖 Respuesta 'estado' despachada a Telegram.");
       }
     }
 
-    // Detectar si es WhatsApp
+    // Detectar si el mensaje viene de WhatsApp
     if (body.object === "whatsapp_business_account" && body.entry?.[0]?.changes?.[0]?.value?.messages?.[0]) {
       const texto = body.entry[0].changes[0].value.messages[0].text?.body?.trim()?.toLowerCase();
       if (texto === "estado") {
         const reporte = ultimosDatosPlc ? armarReporteTexto(ultimosDatosPlc) : "⏳ Esperando datos del PLC...";
         await notificarMultiCanal(reporte);
+        console.log("🤖 Respuesta 'estado' despachada a la lista de WhatsApp.");
       }
     }
   } catch (error) { console.error("❌ Error en webhook:", error.message); }
